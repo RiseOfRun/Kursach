@@ -103,7 +103,9 @@ public:
 			}
 		}
 		vector<vector<double>> G = BuildG(D_1, DetD);
-
+		
+		double mesP = 1 / 2 * abs(DetD); //площадь треугольного кусочка области
+		double L1, L2, L3;
 
 	}
 	~Eq();

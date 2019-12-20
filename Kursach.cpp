@@ -1,49 +1,96 @@
 ﻿#include <iostream>
 #include <vector>
-#include <algorithm>
+#include <functional>
+// M = gamma * C
 
 using namespace std;
 typedef vector<vector<double>> Matrix;
+
+struct MatrixProf
+
+{
+	int size;
+	vector<double> DI;
+	vector<double> AL;
+	vector<double> AU;
+	vector<int> IA;
+	vector<int> JA;
+};
+
+struct AuxVectors
+{
+	vector<double> Ax;
+	vector<double> r;
+	vector<double> z;
+	vector<double> p;
+	vector<double> LU;
+	vector<double> temp;
+};
+
+
 class Net
 {
 public:
 	Net()
 	{
-		
+
 	}
 	vector<vector<double>> Node;
 	vector<vector<int>> Elements;
+	vector<int> fields;
 	double lambda;
 
-	void BuildNet(double xmin, double xmax, double ymin, double ymax, int nx,int ny)
+	void DevideBy2Fields()
+	{
+		fields = vector<int>(Elements.size());
+		int middle = fields.size() / 2;
+		for (size_t i = middle; i < fields.size(); i++)
+		{
+			fields[i] = 1;
+		}
+	}
+
+	void BuildNet(double xmin, double xmax, double ymin, double ymax, int nx, int ny)
 	{
 		double hx = (xmax - xmin) / nx;
 		double hy = (ymax - ymin) / ny;
 		Node = vector<vector<double>>((nx + 1) * (ny + 1));
-		Node[0] = vector<double>{xmin, ymin};
-		double y = ymin;
+		Node[0] = vector<double>{ xmin, ymin };
 
 		for (int i = 0; i < ny; i++)
 		{
-			double x = xmin;
+			double y = ymin + i * hy;
 			for (int j = 0; j < nx; j++)
 			{
-				Node[j + 1] = { x + hx, y};
-				Node[i + nx + 1] = { x,y + hy };
-				Elements.push_back({ j+i*(nx+1),j + 1+i*(nx+1), j + (nx+1)*(i+1)});
-				x = x + hx;	
+				double x = xmin + j * hx;
+				Node[i * (nx + 1) + j + 1] = { x + hx, y };
+				Node[(i + 1) * (nx + 1) + j] = { x,y + hy };
+				Elements.push_back({ j + i * (nx + 1),j + 1 + i * (nx + 1), j + (nx + 1) * (i + 1) });
 			}
-			y = y + hy;
 		}
-		Node[Node.size()-1]={ xmax,ymax };
+		Node[Node.size() - 1] = { xmax,ymax };
 
-		for (int i = ny; i>0; i--)
+		for (int i = ny; i > 0; i--)
 		{
-			for (int j = nx; j >0; j--)
+			for (int j = nx; j > 0; j--)
 			{
-				Elements.push_back({ j + i * (nx + 1) - nx - 1,j - 1 + i * (nx + 1), j + i * (nx + 1)});
+				Elements.push_back({ j + i * (nx + 1) - nx - 1,j - 1 + i * (nx + 1), j + i * (nx + 1) });
 			}
 		}
+		int length = Elements.size();
+		vector<vector<int>> Elementstmp(length);
+		for (size_t j = 0, i = 0; i < length; j++, i += 2)
+		{
+			Elementstmp[i] = Elements[j];
+		}
+
+		for (size_t i = 1, j = length - 1; i < length; i += 2, j--)
+		{
+			Elementstmp[i] = Elements[j];
+		}
+
+		Elements = Elementstmp;
+		DevideBy2Fields();
 	}
 private:
 };
@@ -52,77 +99,240 @@ private:
 class Eq
 {
 public:
-	Net FuckingNet;
-	double Lambda=10, gamma;
-	vector<int> ia, ja;
-	vector<double> al, au,di;
 
-	Eq(Net Net)
+	Net FuckingNet;
+	double lambda = 1, gamma = 0;
+	vector<double> b;
+	MatrixProf AProf;
+	Matrix A;
+
+	void PrintPlot()
 	{
-		FuckingNet = Net;
+		int length = A.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			for (size_t j = 0; j < length; j++)
+			{
+				cout << A[i][j] << " \t";
+			}
+			cout << endl;
+		}
 	}
 
-	vector<vector<double>> BuildG(vector<vector<double>>& D_1,  double DetD)
+	//параметры
+
+	double Ug(vector<double>& node, int k)
 	{
+		return node[1] * node[1];
+	}
+
+	double UB(vector<double>& node, int k)
+	{
+		switch (k)
+		{
+		case 0:
+			return 20 * node[1] - 27;
+			break;
+		default:
+			break;
+		}
+	}
+
+	double Tetta(vector<double>& node, int k)
+	{
+		switch (k)
+		{
+		case 0: return 20;
+		case 1: return 0;
+			//case 2: return (2.);
+		default: return 0;
+		}
+	}
+
+	double Betta(vector<double> node, int field)
+	{
+		return 2;
+	}
+
+	double F(double x, double y, int field)
+	{
+		if (field == 0)
+		{
+			return -20;
+		}
+		else return 0;
+	}
+
+	double Lambda(double x, double y, int field)
+	{
+		if (field == 0)
+		{
+			return 10;
+		}
+		else return 1;
+	}
+
+	//параметры
+
+	Eq()
+	{
+		FuckingNet.BuildNet(0, 2, 0, 2, 2, 2);
+		A = Matrix(FuckingNet.Node.size());
+		b = vector<double>(FuckingNet.Node.size());
+	}
+
+	Eq(Net net)
+	{
+		FuckingNet = net;
+		A = Matrix(FuckingNet.Node.size());
+		for (size_t i = 0; i < A.size(); i++)
+		{
+			A[i] = vector<double>(A.size());
+		}
+		b = vector<double>(FuckingNet.Node.size());
+	}
+
+	//построение матрицы
+
+	vector<vector<double>> BuildG(vector<vector<double>>& D_1, double DetD, int field) {
 		vector<vector<double>> G(3);
-		double multix = Lambda * abs(DetD) / 2.;
+		double multix = abs(DetD) / 2;
 		for (size_t i = 0; i < 3; i++)
 		{
 			for (size_t j = 0; j < 3; j++)
 			{
-				double alpha1i = D_1[i][1];
-				double alpha1j = D_1[j][1];
-				double alpha2i = D_1[i][2];
-				double alpha2j = D_1[j][2];
-				double sum = alpha1i * alpha1j + alpha2i * alpha2j;
-				G[i].push_back(multix*sum);
+
+				G[i].push_back(Lambda(1, 1, field) * multix * (D_1[i][1] * D_1[j][1] + D_1[i][2] * D_1[j][2])); // Lambda = const;
 			}
 		}
 		return G;
 	}
 
-	vector<vector<double>> BuildM(double gamma, double DetD)
+	Matrix BuildC(double DetD)
 	{
-		vector<vector<double>> M = {
-		{2,1,1},
-		{1,2,1},
-		{1,1,2}
-		};
+		Matrix M = Matrix{ {2,1,1 }, { 1,2,1 }, { 1,1,2 } };
+		double mult = abs(DetD) / 24;
 
-		for (int i = 0; i < 3; i++)
+		for (size_t i = 0; i < 3; i++)
 		{
-			for (int j = 0; j < 3; j++)
+			for (size_t j = 0; j < 3; j++)
 			{
-				M[i][j] = M[i][j] * gamma * abs(DetD) / 24;
+				M[i][j] *= mult;
 			}
 		}
+
 		return M;
 	}
 
-	vector<vector<double>> BuildLocal(int i, int j, int k)
+
+
+	vector<double> MVecMult(Matrix& A, vector<double>& b)
 	{
-		double x1 = FuckingNet.Node[i][0];
-		double x2 = FuckingNet.Node[j][0];
-		double x3 = FuckingNet.Node[k][0];
-		double y1 = FuckingNet.Node[i][1];
-		double y2 = FuckingNet.Node[j][1];
-		double y3 = FuckingNet.Node[k][1];
-		
+		vector<double> result(A.size());
+		int length = A.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			for (size_t j = 0; j < length; j++)
+			{
+				result[i] += A[i][j] * b[j];
+			}
+		}
+		return result;
+	}
+
+
+
+	void ToGlobalPlot(Matrix& L, vector<double>& b, vector<int>& el)
+	{
+		int length = 3;
+		for (size_t i = 0; i < length; i++)
+		{
+			for (size_t j = 0; j < length; j++)
+			{
+				A[el[i]][el[j]] += L[i][j];
+			}
+		}
+
+		for (size_t i = 0; i < length; i++)
+		{
+			this->b[el[i]] += b[i];
+		}
+	}
+
+	void ToGLobalProf(Matrix& A, vector<double>& b, vector<int>& el)
+	{
+		int length = A.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			AProf.DI[el[i]] = AProf.DI[el[i]] + A[i][i];
+		}
+
+		for (int i = 0; i < length; i++)
+		{
+			int ibeg = AProf.IA[el[i]] - 1;
+			for (int j = 0; j < i; j++)
+			{
+				int iend = AProf.IA[el[i] + 1] - 1;
+				while (AProf.JA[ibeg] != el[j])
+				{
+					int ind = (ibeg + iend) / 2;
+					if (AProf.JA[ind] <= el[j])
+					{
+						ibeg = ind;
+					}
+					else
+					{
+						iend = ind;
+					}
+				}
+				AProf.AL[ibeg] += A[i][j];
+				AProf.AU[ibeg] += A[j][i];
+				ibeg++;
+			}
+		}
+
+		for (size_t i = 0; i < length; i++)
+		{
+			this->b[el[i]] += b[i];
+		}
+
+	}
+
+	void BuildGlobalProf()
+	{
+		BuildProfile();
+
+		for (size_t i = 0; i < FuckingNet.Elements.size(); i++)
+		{
+			vector<int> element = FuckingNet.Elements[i];
+			int field = FuckingNet.fields[i];
+			BuildLocal(element, field);
+		}
+	}
+
+	Matrix BuildLocal(vector<int>& el, int field)
+	{
+		double x1 = FuckingNet.Node[el[0]][0];
+		double x2 = FuckingNet.Node[el[1]][0];
+		double x3 = FuckingNet.Node[el[2]][0];
+		double y1 = FuckingNet.Node[el[0]][1];
+		double y2 = FuckingNet.Node[el[1]][1];
+		double y3 = FuckingNet.Node[el[2]][1];
+
 		vector<vector<double>> D{
-		{1,1,1},
-		{x1,x2,x3},
-		{y1,y2,y3}
+		vector<double>{1,1,1},
+		vector<double> {x1,x2,x3},
+		vector<double> {y1,y2,y3}
 		};
 
 		double DetD = (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
 
 		vector<vector<double>> D_1{
-		{x2 * y3 - x3 * y2, y2 - y3, x3 - x2},
-		{x3 * y1 - x1 * y3, y3 - y1, x1 - x3},
-		{x1 * y2 - x2 * y1, y1 - y2, x2 - x1}
+		vector<double> {x2* y3 - x3 * y2, y2 - y3, x3 - x2},
+		vector<double> {x3* y1 - x1 * y3, y3 - y1, x1 - x3},
+		vector<double> {x1* y2 - x2 * y1, y1 - y2, x2 - x1}
 		};
-		D_1[0][1] = +0.;
-		D_1[2][2] = +0.;
+
 		for (size_t i = 0; i < 3; i++)
 		{
 			for (size_t j = 0; j < 3; j++)
@@ -130,25 +340,36 @@ public:
 				D_1[i][j] /= DetD;
 			}
 		}
-		vector<vector<double>> G = BuildG(D_1, DetD);
-		vector<vector<double>> M = BuildM(gamma , DetD);
-
-		vector<vector<double>> A(3);
-		for (size_t i = 0; i < 3; i++)
+		vector<vector<double>> G = BuildG(D_1, DetD, field);
+		Matrix M = BuildC(DetD);
+		vector<double> f = { F(x1,y1,0),F(x2,y2,0),F(x3,y3,0) };
+		vector<double> b = MVecMult(M, f);
+		int length = 3;
+		for (size_t i = 0; i < length; i++)
 		{
-			for (size_t j = 0; j < 3; j++)
+			for (size_t j = 0; j < length; j++)
 			{
-				A[i].push_back(G[i][j]+M[i][j]);
-
+				G[i][j] += M[i][j] * gamma;
 			}
 		}
-		return A;
+		ToGLobalProf(G, b, el);
+		ToGlobalPlot(G, b, el);
+		//double mesP = 1 / 2 * abs(DetD); //РїР»РѕС‰Р°РґСЊ С‚СЂРµСѓРіРѕР»СЊРЅРѕРіРѕ РєСѓСЃРѕС‡РєР° РѕР±Р»Р°СЃС‚Рё
+		//ToGlobalPlot(G, b, el);
+		return G;
+	}
+
+	void BuildGlobalPlot()
+	{
+		for (size_t i = 0; i < FuckingNet.Elements.size(); i++)
+		{
+			Matrix test = BuildLocal(FuckingNet.Elements[i], FuckingNet.fields[i]);
+		}
 	}
 
 	void BuildProfile()
 	{
 		vector<vector<int>> profile(FuckingNet.Node.size());
-
 
 		for (size_t i = 0; i < FuckingNet.Elements.size(); i++)
 		{
@@ -158,13 +379,13 @@ public:
 				{
 					int current = FuckingNet.Elements[i][j];
 					int node = FuckingNet.Elements[i][k];
-					if (!count(profile[current].begin(), profile[current].end(),node))
+					if (!count(profile[current].begin(), profile[current].end(), node))
 					{
-						if (profile[current].size() !=0 && profile[current][profile[current].size() - 1] > node)
+						if (profile[current].size() != 0 && profile[current][profile[current].size() - 1] > node)
 						{
 							for (int l = 0; l < profile[current].size(); l++)
 							{
-								if (node>profile[current][l])
+								if (node < profile[current][l])
 								{
 									profile[current].insert(profile[current].begin() + l, node);
 									break;
@@ -179,98 +400,187 @@ public:
 				}
 			}
 		}
-		
-		ia.push_back(1);
+
+		AProf.IA.push_back(1);
 		int count = 0;
 		for (size_t i = 1; i < FuckingNet.Node.size(); i++)
 		{
-			ia.push_back(ia[i - 1] + count);
+			AProf.IA.push_back(AProf.IA[i - 1] + count);
 			count = 0;
 			for (size_t j = 0; j < profile[i].size(); j++)
 			{
-				ja.push_back(profile[i][j]);
+				AProf.JA.push_back(profile[i][j]);
 				count++;
 			}
 		}
-		ia.push_back(ia[ia.size()-1] + count);
-		al = vector<double>(ia[ia.size() - 1] - 1);
-		au = vector<double>(ia[ia.size() - 1] - 1);
-		di = vector<double>(FuckingNet.Node.size());
+		AProf.IA.push_back(AProf.IA[AProf.IA.size() - 1] + count);
+		AProf.AL = vector<double>(AProf.IA[AProf.IA.size() - 1] - 1);
+		AProf.AU = vector<double>(AProf.IA[AProf.IA.size() - 1] - 1);
+		AProf.DI = vector<double>(FuckingNet.Node.size());
 	}
 
-	void ToGLobal(Matrix &A, vector<int> &el)
+	void LUFactorization(MatrixProf& A, MatrixProf& LU)
 	{
-		for (size_t i = 0; i < 3; i++)
-		{
-			di[el[i]] = di[el[i]] + A[i][i];
-		}
+		LU.size = A.size;
+		LU.IA.resize(LU.size + 1);
 
-		for (int i = 0; i < 3; i++)
+		for (int i = 0; i < A.size + 1; i++)
+			LU.IA[i] = A.IA[i];
+
+		LU.AL.resize(LU.IA[LU.size]);
+		LU.AU.resize(LU.IA[LU.size]);
+		LU.JA.resize(LU.IA[LU.size]);
+		LU.DI.resize(LU.size);
+
+		for (int i = 0; i < A.IA[A.size]; i++)
+			LU.JA[i] = A.JA[i];
+
+		for (int i = 0; i < A.size; i++)
 		{
-			int ibeg = ia[el[i]]-1;
-			for (int j = 0; j < i; j++)
+			double sumD = 0;
+			int i0 = A.IA[i], i1 = A.IA[i + 1];
+
+			for (int k = i0; k < i1; k++)
 			{
-				int iend = ia[el[i] + 1] - 1;
-				while (ja[ibeg] != el[j])
+				double sumL = 0, sumU = 0;
+				int j = A.JA[k];
+
+				// Calculate L[i][j], U[j][i]
+				int j0 = A.IA[j], j1 = A.IA[j + 1];
+
+				int kl = i0, ku = j0;
+
+				for (; kl < i1 && ku < j1; )
 				{
-					int ind = (ibeg + iend) / 2 + 1;
-					if (ja[ind]<=el[j])
+					int j_kl = A.JA[kl];
+					int j_ku = A.JA[ku];
+
+					if (j_kl == j_ku)
 					{
-						ibeg = ind;
+						sumL += LU.AL[kl] * LU.AU[ku];
+						sumU += LU.AU[kl] * LU.AL[ku];
+						kl++;
+						ku++;
 					}
-					else
-					{
-						iend = ind;
-					}
+					if (j_kl > j_ku)
+						ku++;
+					if (j_kl < j_ku)
+						kl++;
 				}
-				al[ibeg] += A[i][j];
-				au[ibeg] += A[j][i];
-				ibeg++;
+
+				LU.AL[k] = A.AL[k] - sumL;
+				LU.AU[k] = A.AU[k] - sumU;
+				LU.AU[k] /= A.DI[j];
+
+				// Calculate sum for DI[i]
+				sumD += LU.AL[k] * LU.AU[k];
 			}
-		}
 
+			// Calculate DI[i]
+			LU.DI[i] = A.DI[i] - sumD;
+		}
 	}
 
-	vector<Matrix> BuildGlobal()
-	{
-		vector<Matrix> Locals;
-		for (size_t i = 0; i < FuckingNet.Elements.size(); i++)
+	/*int LOS_LU(MatrixProf& A, double* x, double* f, Matrix& LU, AuxVectors& aux, int maxiter, double eps, double& lastdiff)
 		{
-			vector<int> element = FuckingNet.Elements[i];
-			Locals.push_back(BuildLocal(element[0],element[1],element[2]));
-			Locals[i][0][2] = 3;
-			ToGLobal(Locals[i],element);
+			double* Ax = aux.Ax;
+			double* r = aux.r;
+			double* z = aux.z;
+			double* p = aux.p;
+			double* temp = aux.temp;
+			int size = A.size;
+
+			// Calculate r0
+			Multiply(A, x, Ax);
+			for (int i = 0; i < size; i++)
+				r[i] = f[i] - Ax[i];
+			Forward(LU, r, r, false);
+
+			//Calculate z0
+			Backward(LU, z, r, false);
+
+			// Calculate p0
+			Multiply(A, z, p);
+			Forward(LU, p, p, false);
+
+			double diff = DotProduct(size, r, r);
+
+			int k = 0;
+			for (; k < maxiter && diff >= eps; k++)
+			{
+				// Calculate alpha
+				double dotP = DotProduct(size, p, p);
+				double a = DotProduct(size, p, r) / dotP;
+
+				// Calculate xk, rk
+				for (int i = 0; i < size; i++)
+				{
+					x[i] += a * z[i];
+					r[i] -= a * p[i];
+				}
+
+				// Calculate beta
+				Backward(LU, Ax, r, false);
+				Multiply(A, Ax, temp);
+				Forward(LU, Ax, temp, false);
+				double b = -DotProduct(size, p, Ax) / dotP;
+
+				// Calculate zk, pk
+				Backward(LU, temp, r, false);
+				for (int i = 0; i < size; i++)
+				{
+					z[i] = temp[i] + b * z[i];
+					p[i] = Ax[i] + b * p[i];
+				}
+
+				// Calculate difference
+				diff = DotProduct(size, r, r);
+			}
+
+			lastdiff = diff;
+			return k;
 		}
-		return Locals;
-	}
+
+	*/
 
 private:
-
 };
+
+
+
+
+
+
 
 
 int main()
 {
 	Net testNet;
-	testNet.Node.push_back({2,0});
-	testNet.Node.push_back({ 2,1 });
-	testNet.Node.push_back({ 3,1 });
-	testNet.Node.push_back({ 2,14 });
-	testNet.Node.push_back({ 7,4 });
+	//testNet.BuildNet(0, 2, 0, 2, 2, 2);
 
-	testNet.Elements.push_back({ 0,1,2 });
-	testNet.Elements.push_back({ 2,3,4 });
-	testNet.Elements.push_back({ 1,2,3 });
+	testNet.Node = vector<vector<double>>{
+	{2,0},
+	{2,1},
+	{3,1},
+	{2,4},
+	{7,4}
+	};
+
+	testNet.Elements = vector<vector<int>>{
+		{0,1,2},
+		{2,3,4},
+		{1,2,3}
+	};
+
+	testNet.fields = vector<int>(3);
+	testNet.fields[1] = 1;
+	testNet.fields[2] = 1;
 
 
-
-
-	//testNet.BuildNet(0, 2, 0, 2, 1, 1);
-
-	Eq equity(testNet);
-	equity.BuildProfile();
-	vector<Matrix> Test = equity.BuildGlobal();
-
-    std::cout << "Hello World!\n";
+	//testNet.BuildNet(0,2,0,2,2,2);
+	Eq testSys(testNet);
+	testSys.BuildGlobalProf();
+	testSys.PrintPlot();
+	//testSys.LUFactorization();
+	std::cout << "Hello World!\n";
 }
-

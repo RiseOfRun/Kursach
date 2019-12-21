@@ -7,7 +7,6 @@ using namespace std;
 typedef vector<vector<double>> Matrix;
 
 struct MatrixProf
-
 {
 	int size;
 	vector<double> DI;
@@ -38,7 +37,10 @@ public:
 	vector<vector<double>> Node;
 	vector<vector<int>> Elements;
 	vector<int> fields;
-	double lambda;
+
+	vector<vector<int>> firstCondi;
+	vector<vector<int>> SecondCondi;
+	vector<vector<int>> ThirdCondi;
 
 	void DevideBy2Fields()
 	{
@@ -47,6 +49,14 @@ public:
 		for (size_t i = middle; i < fields.size(); i++)
 		{
 			fields[i] = 1;
+		}
+	}
+
+	void AddCondi(int nx, int ny)
+	{
+		for (int i = 0; i < nx; i++)
+		{
+			firstCondi.push_back({i,0 });
 		}
 	}
 
@@ -104,7 +114,9 @@ public:
 	double lambda = 1, gamma = 0;
 	vector<double> b;
 	MatrixProf AProf;
+	MatrixProf LU;
 	Matrix A;
+
 
 	void PrintPlot()
 	{
@@ -149,16 +161,12 @@ public:
 		}
 	}
 
-	double Betta(vector<double> node, int field)
-	{
-		return 2;
-	}
 
 	double F(double x, double y, int field)
 	{
 		if (field == 0)
 		{
-			return -20;
+			return 20;
 		}
 		else return 0;
 	}
@@ -172,6 +180,15 @@ public:
 		else return 1;
 	}
 
+	double Betta(int field)
+	{
+		return 2;
+	}
+
+	double Gamma(int field)
+	{
+		return 0;
+	}
 	//параметры
 
 	Eq()
@@ -224,8 +241,6 @@ public:
 		return M;
 	}
 
-
-
 	vector<double> MVecMult(Matrix& A, vector<double>& b)
 	{
 		vector<double> result(A.size());
@@ -240,11 +255,9 @@ public:
 		return result;
 	}
 
-
-
 	void ToGlobalPlot(Matrix& L, vector<double>& b, vector<int>& el)
 	{
-		int length = 3;
+		int length = L.size();
 		for (size_t i = 0; i < length; i++)
 		{
 			for (size_t j = 0; j < length; j++)
@@ -253,10 +266,10 @@ public:
 			}
 		}
 
-		for (size_t i = 0; i < length; i++)
-		{
-			this->b[el[i]] += b[i];
-		}
+		//for (size_t i = 0; i < length; i++)
+		//{
+		//	this->b[el[i]] += b[i];
+		//}
 	}
 
 	void ToGLobalProf(Matrix& A, vector<double>& b, vector<int>& el)
@@ -342,7 +355,7 @@ public:
 		}
 		vector<vector<double>> G = BuildG(D_1, DetD, field);
 		Matrix M = BuildC(DetD);
-		vector<double> f = { F(x1,y1,0),F(x2,y2,0),F(x3,y3,0) };
+		vector<double> f = { F(x1,y1,field),F(x2,y2,field),F(x3,y3,field) };
 		vector<double> b = MVecMult(M, f);
 		int length = 3;
 		for (size_t i = 0; i < length; i++)
@@ -417,10 +430,97 @@ public:
 		AProf.AL = vector<double>(AProf.IA[AProf.IA.size() - 1] - 1);
 		AProf.AU = vector<double>(AProf.IA[AProf.IA.size() - 1] - 1);
 		AProf.DI = vector<double>(FuckingNet.Node.size());
+		AProf.size = AProf.DI.size();
 	}
+
+	void AddThirdCondi()
+	{
+		int length = FuckingNet.ThirdCondi.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			vector<int> Edge = FuckingNet.ThirdCondi[i];
+			double x1 = FuckingNet.Node[Edge[0]][0];
+			double y1 = FuckingNet.Node[Edge[0]][1];
+			double x2 = FuckingNet.Node[Edge[1]][0];
+			double y2 = FuckingNet.Node[Edge[1]][1];
+			double hm = sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+			Matrix A = {
+				{2,1},
+				{1,2}
+			};
+
+			double mult = Betta((int)Edge[3]) * hm / 6.;
+
+			for (size_t i = 0; i < 2; i++)
+			{
+				for (size_t j = 0; j < 2; j++)
+				{
+					A[i][j] = A[i][j] * mult;
+				}
+			}
+
+			vector<double> b = {
+					mult * (2 * UB(FuckingNet.Node[Edge[0]],Edge[2]) + UB(FuckingNet.Node[Edge[1]],Edge[2])),
+					mult * (UB(FuckingNet.Node[Edge[0]],Edge[2]) + 2 * UB(FuckingNet.Node[Edge[1]],Edge[2]))
+			};
+			ToGLobalProf(A, b,Edge);
+			ToGlobalPlot(A, b,Edge);
+		}
+	}
+
+	void AddSecondCondi()
+	{
+		int length = FuckingNet.SecondCondi.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			vector<int> Edge = FuckingNet.SecondCondi[i];
+			double x1 = FuckingNet.Node[Edge[0]][0];
+			double y1 = FuckingNet.Node[Edge[0]][1];
+			double x2 = FuckingNet.Node[Edge[1]][0];
+			double y2 = FuckingNet.Node[Edge[1]][1];
+			double hm = sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+
+			double mult = hm / 6.;
+
+			vector<double> b = {
+					mult * (2 * Tetta(FuckingNet.Node[Edge[0]],Edge[2]) + Tetta(FuckingNet.Node[Edge[1]],Edge[2])),
+					mult * (Tetta(FuckingNet.Node[Edge[0]],Edge[2]) + 2 * Tetta(FuckingNet.Node[Edge[1]],Edge[2]))
+			};
+			this->b[Edge[0]] += b[0];
+			this->b[Edge[1]] += b[1];
+		}
+	}
+
+	void AddFirst()
+	{
+		double max = 0;
+		int length = AProf.AL.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			if (max<abs(AProf.AL[i]))
+			{
+				max = abs(AProf.AL[i]);
+			}
+		}
+		max *= 1e+30;
+		
+		length = FuckingNet.firstCondi.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			int n= FuckingNet.firstCondi[i][0];
+			AProf.DI[n] = max;
+			b[n] = max * Ug(FuckingNet.Node[n], FuckingNet.firstCondi[i][1]);
+		}
+	}
+	//Решение Ситемы
 
 	void LUFactorization(MatrixProf& A, MatrixProf& LU)
 	{
+		int length = A.IA.size();
+		for (size_t i = 0; i < length; i++)
+		{
+			A.IA[i]--;
+		}
 		LU.size = A.size;
 		LU.IA.resize(LU.size + 1);
 
@@ -575,12 +675,25 @@ int main()
 	testNet.fields = vector<int>(3);
 	testNet.fields[1] = 1;
 	testNet.fields[2] = 1;
-
+	testNet.ThirdCondi.resize(1);
+	testNet.ThirdCondi[0] = { 2,4,0,0};
+	testNet.SecondCondi = {
+		{0,1,1},
+		{1,3,1},
+		{3,4,0}
+	};
+	testNet.firstCondi = {
+		{0,0},
+		{2,0}
+	};
 
 	//testNet.BuildNet(0,2,0,2,2,2);
 	Eq testSys(testNet);
 	testSys.BuildGlobalProf();
+	testSys.AddSecondCondi();
+	testSys.AddThirdCondi();
+	testSys.AddFirst();
 	testSys.PrintPlot();
-	//testSys.LUFactorization();
+	testSys.LUFactorization(testSys.AProf, testSys.LU);
 	std::cout << "Hello World!\n";
 }

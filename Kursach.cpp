@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <vector>
 #include <functional>
+#include <iomanip>
 // M = gamma * C
 
 using namespace std;
@@ -117,8 +118,10 @@ public:
 	MatrixProf LU;
 	Matrix A;
 
+	double BigEl;
 
-	void PrintPlot()
+
+	void PrintPlot(Matrix &A)
 	{
 		int length = A.size();
 		for (size_t i = 0; i < length; i++)
@@ -171,7 +174,7 @@ public:
 		else return 0;
 	}
 
-	double Lambda(vector<double> &node, int field)
+	double Lambda(vector<double>& node, int field)
 	{
 		if (field == 0)
 		{
@@ -211,7 +214,7 @@ public:
 
 	//построение матрицы
 
-	vector<vector<double>> BuildG(vector<vector<double>>& D_1, double DetD, vector<int> &el, int field) {
+	vector<vector<double>> BuildG(vector<vector<double>>& D_1, double DetD, vector<int>& el, int field) {
 		vector<vector<double>> G(3);
 		double multix = abs(DetD) / 2;
 		for (size_t i = 0; i < 3; i++)
@@ -369,7 +372,7 @@ public:
 				D_1[i][j] /= DetD;
 			}
 		}
-		vector<vector<double>> G = BuildGDecompose(D_1, DetD, el,field);
+		vector<vector<double>> G = BuildGDecompose(D_1, DetD, el, field);
 		Matrix M = BuildC(DetD);
 		vector<double> f = { F(x1,y1,field),F(x2,y2,field),F(x3,y3,field) };
 		vector<double> b = MVecMult(M, f);
@@ -479,8 +482,8 @@ public:
 					mult * (2 * UB(FuckingNet.Node[Edge[0]],Edge[2]) + UB(FuckingNet.Node[Edge[1]],Edge[2])),
 					mult * (UB(FuckingNet.Node[Edge[0]],Edge[2]) + 2 * UB(FuckingNet.Node[Edge[1]],Edge[2]))
 			};
-			ToGLobalProf(A, b,Edge);
-			ToGlobalPlot(A, b,Edge);
+			ToGLobalProf(A, b, Edge);
+			ToGlobalPlot(A, b, Edge);
 		}
 	}
 
@@ -513,18 +516,19 @@ public:
 		int length = AProf.AL.size();
 		for (size_t i = 0; i < length; i++)
 		{
-			if (max<abs(AProf.AL[i]))
+			if (max < abs(AProf.AL[i]))
 			{
 				max = abs(AProf.AL[i]);
 			}
 		}
 		max *= 1e+30;
-		
+
 		length = FuckingNet.firstCondi.size();
 		for (size_t i = 0; i < length; i++)
 		{
-			int n= FuckingNet.firstCondi[i][0];
+			int n = FuckingNet.firstCondi[i][0];
 			AProf.DI[n] = max;
+			A[n][n] = max; //ToRemove
 			b[n] = max * Ug(FuckingNet.Node[n], FuckingNet.firstCondi[i][1]);
 		}
 	}
@@ -596,6 +600,68 @@ public:
 			LU.DI[i] = A.DI[i] - sumD;
 		}
 	}
+	vector<double> Forward(const MatrixProf& A, const vector<double>& prof, vector<double>& b, bool haveDiag)
+	{
+		int n = A.size;
+		vector<double> x(n);
+		for (size_t i = 0; i < n; i++)
+		{
+			double Sum = 0;
+			for (size_t jAdr = A.IA[i]; jAdr < A.IA[i+1]; jAdr++)
+			{
+				int j = A.JA[jAdr];
+				Sum += x[j] * prof[jAdr];
+			}
+			x[i] = (b[i] - Sum);
+			if (haveDiag)
+			{
+				x[i] /= A.DI[i];
+			}
+		}
+		return x;
+	}
+	vector<double> BackWard(const MatrixProf& A, const vector<double>& prof, vector<double>& b, bool HaveDiag)
+	{
+		int n = A.size;
+		vector<double> x = b;
+
+		for (int i = n - 1; i >= 0; i--)
+		{
+			int i0 = A.IA[i], i1 = A.IA[i + 1];
+			if (HaveDiag)
+			{
+				x[i] /= A.DI[i];
+			}
+			for (int k = i0; k < i1; k++)
+			{
+				int j = A.JA[k];
+				x[j] -= prof[k] * x[i];
+			}
+		}
+		return x;
+	}
+	Matrix ProfToPlot(MatrixProf& A)
+	{
+		Matrix Res(A.size);
+		int n = A.size;
+		for (size_t i = 0; i < n; i++)
+		{
+			Res[i].resize(n);
+			Res[i][i] = A.DI[i];
+		}
+
+		for (size_t i = 0; i < n; i++)
+		{
+			for (size_t jadr = A.IA[i]; jadr <A.IA[i+1]; jadr++)
+			{
+				int j = A.JA[jadr];
+				Res[i][j] = A.AL[jadr];
+				Res[j][i] = A.AU[jadr];
+			}
+		}
+		return Res;
+	}
+
 
 	/*int LOS_LU(MatrixProf& A, double* x, double* f, Matrix& LU, AuxVectors& aux, int maxiter, double eps, double& lastdiff)
 		{
@@ -694,8 +760,8 @@ int main()
 	testNet.ThirdCondi.resize(1);
 	testNet.ThirdCondi[0] = { 2,4,0,0};
 	testNet.SecondCondi = {
-		{0,1,1},
-		{1,3,1},
+		///*{0,1,1},
+		//*/{1,3,1},
 		{3,4,0}
 	};
 	testNet.firstCondi = {
@@ -704,12 +770,28 @@ int main()
 	};
 
 	//testNet.BuildNet(0,2,0,2,2,2);
+	cout << scientific << setprecision(15);
 	Eq testSys(testNet);
 	testSys.BuildGlobalProf();
 	testSys.AddSecondCondi();
 	testSys.AddThirdCondi();
 	testSys.AddFirst();
-	testSys.PrintPlot();
+	testSys.PrintPlot(testSys.A);
 	testSys.LUFactorization(testSys.AProf, testSys.LU);
+	Matrix LUPlot = testSys.ProfToPlot(testSys.LU);
+	cout << endl;
+	testSys.PrintPlot(LUPlot);
+	cout << endl;
+	vector<double> x = testSys.Forward(testSys.LU, testSys.LU.AL, testSys.b, true);
+	for (size_t i = 0; i < x.size(); i++)
+	{
+		cout << x[i] << endl;
+	}
+	x = testSys.BackWard(testSys.LU, testSys.LU.AU, x, false);
+	cout << endl;
+	for (size_t i = 0; i < x.size(); i++)
+	{
+		cout << x[i] << endl;
+	}
 	std::cout << "Hello World!\n";
 }

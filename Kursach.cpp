@@ -171,7 +171,7 @@ public:
 		else return 0;
 	}
 
-	double Lambda(double x, double y, int field)
+	double Lambda(vector<double> &node, int field)
 	{
 		if (field == 0)
 		{
@@ -211,7 +211,7 @@ public:
 
 	//построение матрицы
 
-	vector<vector<double>> BuildG(vector<vector<double>>& D_1, double DetD, int field) {
+	vector<vector<double>> BuildG(vector<vector<double>>& D_1, double DetD, vector<int> &el, int field) {
 		vector<vector<double>> G(3);
 		double multix = abs(DetD) / 2;
 		for (size_t i = 0; i < 3; i++)
@@ -219,7 +219,23 @@ public:
 			for (size_t j = 0; j < 3; j++)
 			{
 
-				G[i].push_back(Lambda(1, 1, field) * multix * (D_1[i][1] * D_1[j][1] + D_1[i][2] * D_1[j][2])); // Lambda = const;
+				G[i].push_back(Lambda(FuckingNet.Node[0], field) * multix * (D_1[i][1] * D_1[j][1] + D_1[i][2] * D_1[j][2])); // Lambda = const;
+			}
+		}
+		return G;
+	}
+
+	vector<vector<double>> BuildGDecompose(vector<vector<double>>& D_1, double DetD, vector<int>& el, int field) {
+		vector<vector<double>> G(3);
+		double multix = abs(DetD) / 6;
+		for (size_t i = 0; i < 3; i++)
+		{
+			for (size_t j = 0; j < 3; j++)
+			{
+				double sumL = Lambda(FuckingNet.Node[el[0]], field) +
+					Lambda(FuckingNet.Node[el[0]], field) +
+					Lambda(FuckingNet.Node[el[0]], field);
+				G[i].push_back(sumL * multix * (D_1[i][1] * D_1[j][1] + D_1[i][2] * D_1[j][2])); // Lambda = const;
 			}
 		}
 		return G;
@@ -353,7 +369,7 @@ public:
 				D_1[i][j] /= DetD;
 			}
 		}
-		vector<vector<double>> G = BuildG(D_1, DetD, field);
+		vector<vector<double>> G = BuildGDecompose(D_1, DetD, el,field);
 		Matrix M = BuildC(DetD);
 		vector<double> f = { F(x1,y1,field),F(x2,y2,field),F(x3,y3,field) };
 		vector<double> b = MVecMult(M, f);
